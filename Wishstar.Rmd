@@ -1,0 +1,269 @@
+
+---
+title: "Helvetia WishStar - Analisi"
+author: "Jacopo Morganti"
+output: html_document
+runtime: shiny
+self_contained: yes
+---
+
+<style type="text/css">
+
+h1.title {
+  font-size: 45px;
+  color: Black;
+  text-align: center;
+}
+h4.author { 
+  text-align: center;
+}
+h4.date { 
+  text-align: center;
+}
+</style>
+
+```{r echo=FALSE, include=FALSE}
+library(readxl)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(formattable)
+library(sparkline)
+library(DT)
+library(forcats)
+library(gridExtra)
+library(tidyverse)
+library(gganimate)
+library(gifski)
+Wishstar <- read_excel("Wishstar.xlsx")
+
+setwd("C://Users//Jacopo//Desktop//Wishstar")
+
+Cens_Tot<-sum(Wishstar$Cens_3)
+
+Tot1<-sum(Wishstar$Tot_1)
+Tot2<-sum(Wishstar$Tot_2)
+Tot3<-sum(Wishstar$Tot_3)
+
+Euro<-round(Tot3*0.3,2)
+num<-as.data.frame(c("C1","C2","C3"))
+
+Totale_km<-as.data.frame(rbind(Tot1, Tot2, Tot3))
+Totale_km<-rename(Totale_km, Km=V1)
+Totale_km<-(cbind(num,round(Totale_km,digits=0)))
+```
+
+<br>
+<br>
+<br>
+
+# Dati generali
+
+<br>
+
+In questo censimento sono stati realizzati **`r Cens_Tot`Km**, il che porta Helvetia a **`r toString(Tot3)`Km** totali o **`r toString(Euro)`€**.
+
+I concorrenti sono già oltre metà dei 10.000Km da completare dopo soli 3 censimenti! Forza così!
+
+<br>
+
+# Classifica e Dati individuali
+
+<br>
+
+
+
+```{r echo=FALSE, include=TRUE}
+
+ggplot(data=Wishstar, mapping=aes(x=reorder(Team, Tot_3), y=Tot_3 )) +
+    geom_bar(stat="identity", width=0.5) + 
+    geom_text(aes(label=Tot_3), vjust=0.2, hjust=-0.2, color="black", size=2)+
+    coord_flip()+
+    ylab("Km Totali")+
+    xlab("Team")+
+    ggtitle("Classifica Finale")
+
+```
+
+```{r echo=FALSE, include=TRUE, message=FALSE}
+
+tidycens <- Wishstar %>%
+  select(Team, Cens_1, Cens_2, Cens_3) %>%
+  gather(key ="Censimento", value ="KM", Cens_1:Cens_3)
+
+cens_sparkline_data <- tidycens %>%
+  group_by(Team) %>%
+  summarize(
+    TrendSparkline = spk_chr(
+      KM, type ="line",
+      chartRangeMin = 100, chartRangeMax = max(KM)
+    )
+  )
+
+
+Wishstar2 <- Wishstar %>%
+  select(Team, Partecipanti, Tot_3, Cens_3, Incr_3, Posizione2, Incr_posizione, Sesso, Età, Esperienza )   %>% 
+  mutate(across(where(is.numeric), round, 2))  %>%
+  mutate(Incr_3=scales::percent(Incr_3))
+
+
+Wishstar2<- left_join(Wishstar2,cens_sparkline_data)
+
+datatable(Wishstar2, 
+          colnames = c("Team", "Partecipanti", "Km Totali", "KM Censimento", "Incremento", "Posizione", "Delta Posizione", "Sesso", "Età", "Esperienza", "Trend" ), 
+          escape = FALSE, 
+          filter = 'none', 
+          options = list(paging = FALSE,
+                         columnDefs = list(list(className = 'dt-left', targets = 0:4), list(className = 'dt-center', targets = 5:10),
+                                      list(width = '300px', targets = "_all")),
+                         fnDrawCallback = htmlwidgets::JS(
+  '
+function(){
+  HTMLWidgets.staticRender();
+}
+'
+)
+)) %>%
+  spk_add_deps()
+
+```
+
+<br>
+
+# Trend generali 
+
+<br>
+
+In questa sezione andremo ad osservare se si possono trovare dei trend che ci permettano di capire cosa favorisca un team rispetto ad un altro.
+
+<br>
+
+
+```{r echo=FALSE, include=TRUE, figures-side, fig.show="hold"}
+
+Wishstar3 <- Wishstar %>%
+  select(Team, Sesso, Età, Esperienza, Cens_1, Cens_2, Cens_3) %>%
+  gather(key ="Censimento", value ="KM", Cens_1:Cens_3)
+
+Wishstar3$age_range=cut_width(Wishstar3$Età, widt=10, boundary=0)
+
+
+plot1<-ggplot(Wishstar, aes(x=Età, y=Tot_3, shape=Sesso, color=Sesso)) +
+  geom_point()+
+  geom_text(aes(label= ifelse(Tot_3 > quantile(Tot_3, 0),
+                              as.character(Team),'')),hjust=-0.2,vjust=-0.2, size=2.5)+
+  ylab("Km Totali")
+
+plot2<-ggplot(Wishstar, aes(x=Età, y=Tot_3, shape=Esperienza, color=Esperienza)) +
+  geom_point()+
+  geom_text(aes(label= ifelse(Tot_3> quantile(Tot_3, 0),
+                              as.character(Team),'')),hjust=-0.2,vjust=-0.2, size=2.5)+
+  ylab("Km Totali")
+
+plot3<-ggplot(Wishstar3,aes(x=age_range, y=KM, color=age_range))+
+        geom_boxplot()+
+        ylab("KM per Censimento")
+
+plot4<-ggplot(Wishstar3,aes(x=Esperienza, y=KM, color=Esperienza))+
+  geom_boxplot()+
+        ylab("KM per Censimento")
+
+plot5<-ggplot(Wishstar3,aes(x=Sesso, y=KM, color=Sesso))+
+  geom_boxplot()+
+        ylab("KM per Censimento")
+
+par(mfrow = c(2,1))
+
+plot1
+
+plot2
+
+
+```
+
+In questi primi due grafici possiamo vedere i *Km Totali* rapportati all'*età media* del team e a variabili quali il *sesso* o l'*esperienza* (dove si intende un team che ha partecipato ad una scorsa edizione di una staffetta aziendale). 
+
+Al momento non sembra esserci una qualche particolare correlazione tra i Km totali percorsi e l'età. Questo è dovuto in particolar modo al fatto che quasi la metà dei team presenta un'età media tra i 45-50 anni e che proprio questo gruppo presenti un'elevata dispersione.
+
+Alla stessa maniera possiamo dire che il sesso non ha particolare importanza, salvo che per le primissime posizioni, che sono state prese da team di soli maschi. Vi sono però delle eccezioni, come il **Team Ercole** che pur essendo il team più anziano della competizione si piazza tra i *top 5* e che, a onor del vero, detiene il primato per il maggior numero di Km percorsi in un solo censimento: ben **200Km**!
+
+Fondamentale per una buona posizione in classifica risulta invece essere l'esperienza pregressa. Difatti, 4 delle *top 5* rientrano in questa categoria.
+
+Andiamo ora ad analizzare la distribuzione dei censimenti tramite dei *Box-plot*, per osservare meglio questi trend:
+
+<br>
+
+
+```{r echo=FALSE, include=TRUE}
+
+par(mfrow = c(3,3))
+
+plot3
+
+plot4
+
+plot5
+
+
+```
+
+<br>
+
+<br>
+
+# Storico della Classifica, censimento per censimento
+
+<br>
+
+```{r echo=FALSE, include=TRUE, message=FALSE, warning=FALSE}
+
+Wishstar4 <- Wishstar %>%
+  select(Team, Tot_1, Tot_2, Tot_3) %>%
+  gather(key ="Censimento", value ="KM", Tot_1:Tot_3)
+
+gdp_formatted <- Wishstar4 %>%
+  group_by(Censimento) %>% # The * 1 makes it possible to have non-integer ranks while sliding
+  mutate(rank = rank(-KM),
+         Value_rel = KM/KM[rank==1],
+         Value_lbl = paste0(" ",round(KM/1e9))) %>%
+  group_by(Team) %>%
+  filter(rank <=18) %>%
+  ungroup()
+
+staticplot = ggplot(gdp_formatted, aes(rank, group = Team,
+                                       fill = as.factor(Team), color = as.factor(Team))) +
+  geom_tile(aes(y = KM/2,
+                height = KM,
+                width = 0.9), alpha = 0.8, color = NA) +
+  geom_text(aes(y = 0, label = paste(Team, " ")), vjust = 0.2, hjust = 1) +
+  geom_text(aes(y=KM,label = KM, hjust=0)) +
+  coord_flip(clip = "off", expand = FALSE) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_reverse() +
+  guides(color = FALSE, fill = FALSE) +
+  theme(axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.position="none",
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        panel.grid.major=element_blank(),
+        panel.grid.minor=element_blank(),
+        panel.grid.major.x = element_line( size=.1, color="grey" ),
+        panel.grid.minor.x = element_line( size=.1, color="grey" ),
+        plot.title=element_text(size=25, hjust=0.5, face="bold", colour="grey", vjust=-1),
+        plot.subtitle=element_text(size=18, hjust=0.5, face="italic", color="grey"),
+        plot.caption =element_text(size=8, hjust=0.5, face="italic", color="grey"),
+        plot.background=element_blank(),
+        plot.margin = margin(2,2, 2, 4, "cm"))
+
+anim = staticplot + transition_states(Censimento, transition_length = 9, state_length = 8) +
+  view_follow(fixed_x = TRUE)  +
+  labs(title = 'Evoluzione Classifica: {closest_state}', subtitle="  ")
+
+animate(anim, 200, fps = 20,  width = 1200, height = 1000,
+        renderer = gifski_renderer("gganim.gif"))
+```
